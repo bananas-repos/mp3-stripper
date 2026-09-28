@@ -1,0 +1,17 @@
+# HowTo build a release
+
+
+# Version names. Based on Deus Ex Missions.
+
+Rescue the Lady
+On the Town
+The Lebedev Sanction
+Inevitable Choices
+Breakout
+Hong Kong
+The Supertanker
+Gray Paree
+Treasures of the Templars
+Vandenberg AFB
+By the Sea
+Area 51
