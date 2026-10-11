@@ -46,7 +46,6 @@ var cli cliParams
 
 func main() {
 	// parse cli params and make sure required input is given
-	//cli := cliParams{}
 	opts.New(&cli).
 		Version(m3sVersion).
 		Repo(m3sWebsite).
