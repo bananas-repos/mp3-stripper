@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"strings"
 )
 
 /**
@@ -24,16 +25,20 @@ import (
  * 2026 https://://www.bananas-playground.net/projekt/m3s
  */
 
-// Detectors for every metadata container that can appear in an MP3 file.
-//
-// Each one anchors on a magic string and then corroborates it before claiming
-// a match. Corroboration is not optional: "TAG" and "3DI" are three bytes and
-// "LYRICS200" occurs inside real APE item values, so an uncorroborated match
-// would silently chop the end off the audio.
+/**
+ * Detectors for every metadata container that can appear in an MP3 file.
+ *
+ * Each one anchors on a magic string and then corroborates it before claiming
+ * a match. Corroboration is not optional: "TAG" and "3DI" are three bytes and
+ * "LYRICS200" occurs inside real APE item values, so an uncorroborated match
+ * would silently chop the end off the audio.
+ */
 
-// synchsafe decodes a 28-bit synchsafe integer. Every byte must have its high
-// bit clear; some old taggers wrote a plain big-endian uint32 instead, and
-// honouring such a size would land us inside the audio.
+/**
+ * synchsafe decodes a 28-bit synchsafe integer. Every byte must have its high
+ * bit clear; some old taggers wrote a plain big-endian uint32 instead, and
+ * honouring such a size would land us inside the audio.
+ */
 func synchsafe(b []byte) (int64, bool) {
 	var v int64
 	for _, c := range b[:4] {
@@ -45,15 +50,23 @@ func synchsafe(b []byte) (int64, bool) {
 	return v, true
 }
 
+// the id3v2 info struct
 type id3v2Info struct {
 	major, minor, flags byte
 	size                int64 // declared: excludes the 10-byte header and any footer
 	total               int64 // full on-disk size
 }
 
-func (i id3v2Info) name() string { return fmt.Sprintf("ID3v2.%d", i.major) }
+/**
+ * name returns the correct id
+ */
+func (i id3v2Info) name() string {
+	return fmt.Sprintf("ID3v2.%d", i.major)
+}
 
-// id3v2At decodes an ID3v2 header at off. The caller bounds-checks total.
+/**
+ * id3v2At decodes an ID3v2 header at off. The caller bounds-checks total.
+ */
 func id3v2At(rd *reader, off int64) (id3v2Info, bool) {
 	b, err := rd.at(off, 10)
 	if err != nil || string(b[:3]) != "ID3" {
@@ -77,8 +90,10 @@ func id3v2At(rd *reader, off int64) (id3v2Info, bool) {
 	return info, true
 }
 
-// id3v2AppendedAt matches an ID3v2.4 tag appended at the end of the file, whose
-// 10-byte footer ends at cursor.
+/**
+ * id3v2AppendedAt matches an ID3v2.4 tag appended at the end of the file, whose
+ * 10-byte footer ends at cursor.
+ */
 func id3v2AppendedAt(rd *reader, cursor, floor int64, _ Kind) (Region, bool, error) {
 	f, err := rd.at(cursor-10, 10)
 	if err != nil || string(f[:3]) != "3DI" {
@@ -108,7 +123,9 @@ func id3v2AppendedAt(rd *reader, cursor, floor int64, _ Kind) (Region, bool, err
 	}, true, nil
 }
 
-// id3v1At matches the final 128-byte ID3v1 block ending at cursor.
+/**
+ * id3v1At matches the final 128-byte ID3v1 block ending at cursor.
+ */
 func id3v1At(rd *reader, cursor, floor int64, _ Kind) (Region, bool, error) {
 	if cursor-floor < 128 {
 		return Region{}, false, nil
@@ -131,9 +148,11 @@ func id3v1At(rd *reader, cursor, floor int64, _ Kind) (Region, bool, error) {
 	return Region{Kind: KindID3v1, Name: name, Offset: cursor - 128, Size: 128, Detail: detail}, true, nil
 }
 
-// id3v1ExtendedAt matches the 227-byte "enhanced" TAG+ block. It is only
-// meaningful directly in front of an ID3v1 tag, which is also the only way to
-// tell a real one from a four-byte coincidence.
+/**
+ * id3v1ExtendedAt matches the 227-byte "enhanced" TAG+ block. It is only
+ * meaningful directly in front of an ID3v1 tag, which is also the only way to
+ * tell a real one from a four-byte coincidence.
+ */
 func id3v1ExtendedAt(rd *reader, cursor, floor int64, prev Kind) (Region, bool, error) {
 	if prev != KindID3v1 || cursor-floor < 227 {
 		return Region{}, false, nil
@@ -145,6 +164,7 @@ func id3v1ExtendedAt(rd *reader, cursor, floor int64, prev Kind) (Region, bool, 
 	return Region{Kind: KindID3v1Extended, Name: "ID3v1 (extended)", Offset: cursor - 227, Size: 227}, true, nil
 }
 
+// The apeInfo struct
 type apeInfo struct {
 	version   int64
 	tagSize   int64 // includes the footer, excludes the header
@@ -152,9 +172,11 @@ type apeInfo struct {
 	hasHeader bool
 }
 
-// apeAt matches an APE tag whose 32-byte footer ends at cursor. Unlike the
-// weaker anchors, an eight-byte magic with a valid version is trusted enough
-// that a bad size is reported as corruption rather than shrugged off.
+/**
+ * apeAt matches an APE tag whose 32-byte footer ends at cursor. Unlike the
+ * weaker anchors, an eight-byte magic with a valid version is trusted enough
+ * that a bad size is reported as corruption rather than shrugged off.
+ */
 func apeAt(rd *reader, cursor, floor int64, _ Kind) (Region, bool, error) {
 	f, err := rd.at(cursor-32, 32)
 	if err != nil || string(f[:8]) != "APETAGEX" {
@@ -205,8 +227,10 @@ func apeAt(rd *reader, cursor, floor int64, _ Kind) (Region, bool, error) {
 	}, true, nil
 }
 
-// apeHeaderAt matches an APE tag placed at the front of the file, identified by
-// the "this is a header" flag.
+/**
+ * apeHeaderAt matches an APE tag placed at the front of the file, identified by
+ * the "this is a header" flag.
+ */
 func apeHeaderAt(rd *reader, off int64) (Region, bool, error) {
 	h, err := rd.at(off, 32)
 	if err != nil || string(h[:8]) != "APETAGEX" {
@@ -233,8 +257,10 @@ func apeHeaderAt(rd *reader, off int64) (Region, bool, error) {
 	}, true, nil
 }
 
-// lyrics3v2At matches a Lyrics3v2 block ending at cursor: six ASCII digits of
-// size followed by "LYRICS200".
+/**
+ * lyrics3v2At matches a Lyrics3v2 block ending at cursor: six ASCII digits of
+ * size followed by "LYRICS200".
+ */
 func lyrics3v2At(rd *reader, cursor, floor int64, _ Kind) (Region, bool, error) {
 	b, err := rd.at(cursor-15, 15)
 	if err != nil || string(b[6:]) != "LYRICS200" {
@@ -260,12 +286,16 @@ func lyrics3v2At(rd *reader, cursor, floor int64, _ Kind) (Region, bool, error) 
 	return Region{Kind: KindLyrics3v2, Name: "Lyrics3v2", Offset: start, Size: total}, true, nil
 }
 
-// maxLyrics3v1 bounds the backward search: the lyrics field itself is capped at
-// 5100 bytes, plus the two magic strings.
+/**
+ * maxLyrics3v1 bounds the backward search: the lyrics field itself is capped at
+ * 5100 bytes, plus the two magic strings.
+ */
 const maxLyrics3v1 = 5100 + 11 + 9
 
-// lyrics3v1At matches a Lyrics3v1 block ending at cursor. It has no size field,
-// so the start has to be searched for.
+/**
+ * lyrics3v1At matches a Lyrics3v1 block ending at cursor. It has no size field,
+ * so the start has to be searched for.
+ */
 func lyrics3v1At(rd *reader, cursor, floor int64, _ Kind) (Region, bool, error) {
 	if b, err := rd.at(cursor-9, 9); err != nil || string(b) != "LYRICSEND" {
 		return Region{}, false, nil
@@ -292,8 +322,10 @@ func lyrics3v1At(rd *reader, cursor, floor int64, _ Kind) (Region, bool, error) 
 	return Region{Kind: KindLyrics3v1, Name: "Lyrics3v1", Offset: start, Size: cursor - start}, true, nil
 }
 
-// id3v2Detail lists frame IDs for the verbose report. Nothing here affects the
-// byte ranges, so giving up early is harmless.
+/**
+ * id3v2Detail lists frame IDs for the verbose report. Nothing here affects the
+ * byte ranges, so giving up early is harmless.
+ */
 func id3v2Detail(rd *reader, off int64, info id3v2Info) string {
 	if info.flags&0x80 != 0 {
 		// Unsynchronisation rewrites the payload, so frame offsets inside it
@@ -335,7 +367,7 @@ func id3v2Detail(rd *reader, off int64, info id3v2Info) string {
 			break
 		}
 		if size > 8<<10 {
-			ids = append(ids, fmt.Sprintf("%s(%s)", id, human(size)))
+			ids = append(ids, fmt.Sprintf("%s(%s)", id, byteCountSI(size)))
 		} else {
 			ids = append(ids, id)
 		}
@@ -344,9 +376,12 @@ func id3v2Detail(rd *reader, off int64, info id3v2Info) string {
 	if len(ids) == 0 {
 		return ""
 	}
-	return joinWords(ids)
+	return strings.Join(ids, " ")
 }
 
+/**
+ * id3v2FrameSize
+ */
 func id3v2FrameSize(hb []byte, major byte) (int64, bool) {
 	switch major {
 	case 2:
@@ -358,6 +393,9 @@ func id3v2FrameSize(hb []byte, major byte) (int64, bool) {
 	}
 }
 
+/**
+ * validFrameID checks for a valid frame id
+ */
 func validFrameID(id string) bool {
 	for _, c := range id {
 		if !(c >= 'A' && c <= 'Z') && !(c >= '0' && c <= '9') {

@@ -8,6 +8,7 @@ import (
 	"m3s/lib/mp3"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/jpillora/opts"
 )
@@ -52,7 +53,7 @@ func main() {
 		Parse()
 
 	// ready set  go
-	verboseMsg(fmt.Sprintf("Using input : %s", cli.File))
+	verboseMsg(fmt.Sprintf("Using input: '%s'", cli.File))
 	inputFile, err := os.Open(cli.File)
 	errorCheck(err, "Can not open input.")
 	defer inputFile.Close()
@@ -60,7 +61,7 @@ func main() {
 	inputInfo, err := inputFile.Stat()
 	errorCheck(err, "Can not get more information of input.")
 	if inputInfo.IsDir() {
-		log.Fatalf("ERROR \"'%s' is a directory. Not implemented yet.\"\n", cli.File)
+		log.Fatalf("%-8s \"'%s' is a directory. Not implemented yet.\"\n", "ERROR", cli.File)
 	}
 
 	mp3Layout, err := mp3.Scan(inputFile, inputInfo.Size())
@@ -76,11 +77,13 @@ func main() {
 	newFile := "clean_" + cli.File
 	verboseMsg(fmt.Sprintf("New filename: '%s'. Replace: %t", newFile, cli.Replace))
 	if _, err := os.Stat(newFile); err == nil {
-		// fatalf exit the programm, so no more check needed.
+		// fatalf exits the programm, so no more check needed.
 		if !cli.Replace {
-			log.Fatalf("ERROR \"Outputfile '%s' exists\"\n", newFile)
+			log.Fatalf("%-8s \"Outputfile '%s' exists. See --help.\"\n", "ERROR", newFile)
 		}
-		log.Printf("INFO \" Outputfile '%s' will be overwritten!\"\n", newFile)
+		log.Printf("%-8s \"Outputfile '%s' will be overwritten!\"\n", "INFO", newFile)
+		// wait some time to maybe have the time to send a ctrl-c
+		time.Sleep(1 * time.Second)
 	}
 
 	// all good. Write the new file
@@ -95,7 +98,7 @@ func main() {
  */
 func errorCheck(e error, msg string) {
 	if e != nil {
-		log.Fatalf("ERROR \"%s\" Error \"%s\"",msg,e)
+		log.Fatalf("%-8s \"%s\" Error \"%s\"", "ERROR", msg,e)
 	}
 }
 
@@ -104,7 +107,7 @@ func errorCheck(e error, msg string) {
  */
 func verboseMsg(msg string) {
 	if cli.Verbose {
-		log.Printf("VERBOSE \"%s\"", msg)
+		log.Printf("%-8s \"%s\"", "VERBOSE", msg)
 	}
 }
 
@@ -113,7 +116,7 @@ func verboseMsg(msg string) {
  */
 func dbgMsg(msg string) {
 	if cli.Debug {
-		log.Printf("DEBUG \"%s\"", msg)
+		log.Printf("%-8s \"%s\"", "DEBUG", msg)
 	}
 }
 
@@ -142,7 +145,11 @@ func writeFile(dst string, src io.ReaderAt, l *mp3.Layout, mode os.FileMode) err
 		}
 	}()
 
-	if _, err := mp3.Write(tmp, src, l); err != nil {
+	// finally write the file, set attributes, sync and close the file
+	if l.AudioStart < 0 || l.AudioStart >= l.AudioEnd || l.AudioEnd > l.FileSize {
+		return fmt.Errorf("%w: audio span [%d,%d) in a %d byte file", mp3.ErrMalformed, l.AudioStart, l.AudioEnd, l.FileSize)
+	}
+	if _, err := io.Copy(tmp, io.NewSectionReader(src, l.AudioStart, l.AudioSize())); err != nil {
 		return err
 	}
 	if err := tmp.Chmod(mode); err != nil {

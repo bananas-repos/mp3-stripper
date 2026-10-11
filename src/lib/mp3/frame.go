@@ -22,14 +22,14 @@ import (
  * 2026 https://://www.bananas-playground.net/projekt/m3s
  */
 
-// MPEG audio frame header, 4 bytes:
-//
-//	AAAAAAAA AAABBCCD EEEEFFGH IIJJKLMM
-//
-//	A  frame sync, 11 bits, all set
-//	BB version        CC layer          D  protection (0 = CRC present)
-//	EEEE bitrate idx  FF sample rate    G  padding      H private
-//	II channel mode   JJ mode extension K  copyright  L original  MM emphasis
+/**
+ * MPEG audio frame header, 4 bytes:
+ * AAAAAAAA AAABBCCD EEEEFFGH IIJJKLMM
+ * A  frame sync, 11 bits, all set
+ * BB version        CC layer          D  protection (0 = CRC present)
+ * EEEE bitrate idx  FF sample rate    G  padding      H private
+ * II channel mode   JJ mode extension K  copyright  L original  MM emphasis
+ */
 
 // Version is the MPEG audio version, valued as the raw 2-bit header field.
 type Version byte
@@ -42,6 +42,7 @@ const (
 	channelMono         = 3 // channel mode 11
 )
 
+/* Not used?
 func (v Version) String() string {
 	switch v {
 	case MPEG1:
@@ -53,6 +54,7 @@ func (v Version) String() string {
 	}
 	return "invalid"
 }
+ */
 
 // Bitrates in kbit/s. Index 0 is free format, index 15 is invalid.
 var bitrates = [5][16]int{
@@ -74,6 +76,9 @@ var sampleRates = [4][3]int{
 	MPEG1:  {44100, 48000, 32000},
 }
 
+/**
+ * bitrateRow
+ */
 func bitrateRow(v Version, layer int) int {
 	if v == MPEG1 {
 		return layer - 1
@@ -84,6 +89,7 @@ func bitrateRow(v Version, layer int) int {
 	return 4
 }
 
+// frameHeader struct
 type frameHeader struct {
 	version     Version
 	layer       int // 1, 2 or 3
@@ -96,7 +102,9 @@ type frameHeader struct {
 	length      int64 // total frame length; 0 when free format
 }
 
-// parseFrame decodes a frame header from the first 4 bytes of b.
+/**
+ * parseFrame decodes a frame header from the first 4 bytes of b.
+ */
 func parseFrame(b []byte) (frameHeader, bool) {
 	var h frameHeader
 	// The sync word is 11 bits, not 12: the three bits after it encode the
@@ -131,8 +139,10 @@ func parseFrame(b []byte) (frameHeader, bool) {
 	return h, true
 }
 
-// frameLength returns the total frame size in bytes, or 0 if the bitrate is
-// free format and the length therefore cannot be derived from the header.
+/**
+ * frameLength returns the total frame size in bytes, or 0 if the bitrate is
+ * free format and the length therefore cannot be derived from the header.
+ */
 func frameLength(v Version, layer, bitrate, sampleRate int, padding bool) int64 {
 	if bitrate == 0 || sampleRate == 0 {
 		return 0
@@ -154,6 +164,9 @@ func frameLength(v Version, layer, bitrate, sampleRate int, padding bool) int64 
 	return int64(coeff*bitrate/sampleRate + pad)
 }
 
+/**
+ * sideInfoSize
+ */
 func sideInfoSize(v Version, channelMode int) int {
 	mono := channelMode == channelMono
 	if v == MPEG1 {
@@ -168,12 +181,16 @@ func sideInfoSize(v Version, channelMode int) int {
 	return 17
 }
 
-// chainFrames is how many consecutive frames must agree before a sync word is
-// believed. Field agreement, not the count, is what kills false positives.
+/**
+ * chainFrames is how many consecutive frames must agree before a sync word is
+ * believed. Field agreement, not the count, is what kills false positives.
+ */
 const chainFrames = 3
 
-// chainAt reports whether a frame chain begins at off, reading no further than
-// limit. A file with fewer than chainFrames frames still validates.
+/**
+ * chainAt reports whether a frame chain begins at off, reading no further than
+ * limit. A file with fewer than chainFrames frames still validates.
+ */
 func chainAt(rd *reader, off, limit int64) (frameHeader, bool) {
 	b, err := rd.at(off, 4)
 	if err != nil {
@@ -212,11 +229,15 @@ func chainAt(rd *reader, off, limit int64) (frameHeader, bool) {
 	return first, true
 }
 
-// maxResync bounds the search for a first frame, so a file of pure noise fails
-// with an error instead of being scanned end to end.
+/**
+ * maxResync bounds the search for a first frame, so a file of pure noise fails
+ * with an error instead of being scanned end to end.
+ */
 const maxResync = 2 << 20
 
-// resync finds the first believable frame in [from, limit).
+/**
+ * resync finds the first believable frame in [from, limit).
+ */
 func resync(rd *reader, from, limit int64) (int64, frameHeader, bool) {
 	end := from + maxResync
 	if end > limit {
@@ -244,9 +265,11 @@ func resync(rd *reader, from, limit int64) (int64, frameHeader, bool) {
 	return 0, frameHeader{}, false
 }
 
-// vbrTag identifies the VBR header inside the first frame, if any, and reports
-// the stream length it declares. This header is deliberately kept, so its
-// contents are only ever read for the report.
+/**
+ * vbrTag identifies the VBR header inside the first frame, if any, and reports
+ * the stream length it declares. This header is deliberately kept, so its
+ * contents are only ever read for the report.
+ */
 func vbrTag(rd *reader, frameOff int64, h frameHeader) (name, encoder string, declared int64) {
 	// Xing and Info sit immediately after the side information.
 	off := frameOff + 4
@@ -267,8 +290,10 @@ func vbrTag(rd *reader, frameOff int64, h frameHeader) (name, encoder string, de
 	return "", "", 0
 }
 
-// xingDeclaredBytes reads the Xing "Bytes" field, which some taggers filled
-// with the whole file size rather than the stream size.
+/**
+ * xingDeclaredBytes reads the Xing "Bytes" field, which some taggers filled
+ * with the whole file size rather than the stream size.
+ */
 func xingDeclaredBytes(rd *reader, tagOff int64) int64 {
 	b, err := rd.at(tagOff+4, 4)
 	if err != nil {
@@ -289,8 +314,10 @@ func xingDeclaredBytes(rd *reader, tagOff int64) int64 {
 	return int64(binary.BigEndian.Uint32(nb))
 }
 
-// lameEncoder returns the 9-byte encoder string that LAME and compatible
-// encoders write 120 bytes into the Xing header, when it looks like one.
+/**
+ * lameEncoder returns the 9-byte encoder string that LAME and compatible
+ * encoders write 120 bytes into the Xing header, when it looks like one.
+ */
 func lameEncoder(rd *reader, tagOff int64) string {
 	b, err := rd.at(tagOff+120, 9)
 	if err != nil {
@@ -304,9 +331,11 @@ func lameEncoder(rd *reader, tagOff int64) string {
 	return string(b)
 }
 
-// tailAligned walks the frame chain to report whether the audio span ends on a
-// frame boundary. Used only for a --verbose warning: the tail is owned by tag
-// peeling, never by this walk.
+/**
+ * tailAligned walks the frame chain to report whether the audio span ends on a
+ * frame boundary. Used only for a --verbose warning: the tail is owned by tag
+ * peeling, never by this walk.
+ */
 func tailAligned(rd *reader, l *Layout) bool {
 	pos := l.AudioStart
 	for pos < l.AudioEnd {

@@ -33,14 +33,17 @@ var (
 	ErrShortRead = errors.New("read past end of file")
 )
 
+// reader struct
 type reader struct {
 	r    io.ReaderAt
 	size int64
 }
 
-// at reads n bytes at off. n is always a small compile-time constant: no read
-// in this package is ever sized from a value found in the file, so a hostile
-// size field cannot drive an allocation.
+/**
+ * at reads n bytes at off. n is always a small compile-time constant: no read
+ * in this package is ever sized from a value found in the file, so a hostile
+ * size field cannot drive an allocation.
+ */
 func (rd *reader) at(off int64, n int) ([]byte, error) {
 	if off < 0 || n < 0 || off > rd.size-int64(n) {
 		return nil, ErrShortRead
@@ -87,8 +90,7 @@ type AudioInfo struct {
 	Declared   int64  // stream length the Xing header claims, 0 if absent
 }
 
-// Layout is the byte-level map of an MP3 file: everything to strip, and the one
-// contiguous span to keep.
+// Layout is the byte-level map of an MP3 file: everything to strip, and the one contiguous span to keep.
 type Layout struct {
 	FileSize   int64
 	AudioStart int64
@@ -97,8 +99,15 @@ type Layout struct {
 	Audio      AudioInfo
 }
 
-func (l *Layout) AudioSize() int64 { return l.AudioEnd - l.AudioStart }
+/**
+ * AudioSize
+ */
+func (l *Layout) AudioSize() int64 {
+	return l.AudioEnd - l.AudioStart
+}
 
+/**
+ * not used?
 func (l *Layout) StrippedSize() int64 {
 	var n int64
 	for _, r := range l.Stripped {
@@ -106,12 +115,17 @@ func (l *Layout) StrippedSize() int64 {
 	}
 	return n
 }
+ */
 
-// maxPeel caps the peel loops. No real file stacks more than a handful of tags,
-// and a cap turns a detector bug into an error instead of an endless loop.
+/**
+ * maxPeel caps the peel loops. No real file stacks more than a handful of tags,
+ * and a cap turns a detector bug into an error instead of an endless loop.
+ */
 const maxPeel = 32
 
-// Scan maps the file without loading it: only small fixed windows are read.
+/**
+ * Scan maps the file without loading it: only small fixed windows are read.
+ */
 func Scan(r io.ReaderAt, size int64) (*Layout, error) {
 	if size == 0 {
 		return nil, fmt.Errorf("%w: file is empty", ErrNotMP3)
@@ -158,9 +172,11 @@ func Scan(r io.ReaderAt, size int64) (*Layout, error) {
 	return l, nil
 }
 
-// foreignContainers are formats that can carry MPEG audio inside them. A
-// RIFF/WAVE wrapper in particular holds real frames, so without this check the
-// sync scan would happily emit a headerless stream and call it clean.
+/**
+ * foreignContainers are formats that can carry MPEG audio inside them. A
+ * RIFF/WAVE wrapper in particular holds real frames, so without this check the
+ * sync scan would happily emit a headerless stream and call it clean.
+ */
 var foreignContainers = []struct{ magic, name string }{
 	{"RIFF", "RIFF/WAVE"},
 	{"FORM", "AIFF"},
@@ -169,6 +185,9 @@ var foreignContainers = []struct{ magic, name string }{
 	{"\x1aE\xdf\xa3", "Matroska"},
 }
 
+/**
+ * sniff
+ */
 func sniff(rd *reader) error {
 	b, err := rd.at(0, 4)
 	if err != nil {
@@ -185,7 +204,9 @@ func sniff(rd *reader) error {
 	return nil
 }
 
-// peelFront skips leading tags and returns the offset just past them.
+/**
+ * peelFront skips leading tags and returns the offset just past them.
+ */
 func peelFront(rd *reader, l *Layout) (int64, error) {
 	off := int64(0)
 	for i := 0; ; i++ {
@@ -221,9 +242,11 @@ func peelFront(rd *reader, l *Layout) (int64, error) {
 	}
 }
 
-// tailDetectors run in order of anchor confidence, not in the order the specs
-// lay the containers out: when two would match at the same cursor, a
-// corroborated eight-byte magic must beat a bare three-byte one.
+/**
+ * tailDetectors run in order of anchor confidence, not in the order the specs
+ * lay the containers out: when two would match at the same cursor, a
+ * corroborated eight-byte magic must beat a bare three-byte one.
+ */
 var tailDetectors = []func(rd *reader, cursor, floor int64, prev Kind) (Region, bool, error){
 	apeAt,           // "APETAGEX", version and flags validated
 	lyrics3v2At,     // "LYRICS200", digits plus "LYRICSBEGIN" at the computed start
@@ -233,11 +256,13 @@ var tailDetectors = []func(rd *reader, cursor, floor int64, prev Kind) (Region, 
 	lyrics3v1At,     // "LYRICSEND", start found by bounded backward search
 }
 
-// peelTail strips trailing containers, working down from the end of the file.
-// It retries until nothing matches rather than assuming a fixed order, because
-// real files stack these inconsistently. Two consequences are deliberate:
-// stacked ID3v1 tags are peeled repeatedly, and Lyrics3 is stripped even when
-// the ID3v1 tag its spec mandates after it has already been removed.
+/**
+ * peelTail strips trailing containers, working down from the end of the file.
+ * It retries until nothing matches rather than assuming a fixed order, because
+ * real files stack these inconsistently. Two consequences are deliberate:
+ * stacked ID3v1 tags are peeled repeatedly, and Lyrics3 is stripped even when
+ * the ID3v1 tag its spec mandates after it has already been removed.
+ */
 func peelTail(rd *reader, l *Layout, floor int64) (int64, error) {
 	cursor := rd.size
 	prev := KindAudio // nothing peeled yet
@@ -273,7 +298,9 @@ func peelTail(rd *reader, l *Layout, floor int64) (int64, error) {
 	}
 }
 
-// findAudio locates the first audio frame in [front, tail).
+/**
+ * findAudio locates the first audio frame in [front, tail).
+ */
 func findAudio(rd *reader, l *Layout, front, tail int64) (int64, frameHeader, error) {
 	// Fast path: in a well-formed file the first frame sits exactly where the
 	// leading tags end, so no scanning happens and no byte can be mis-trimmed.
@@ -300,7 +327,9 @@ func findAudio(rd *reader, l *Layout, front, tail int64) (int64, frameHeader, er
 	return off, h, nil
 }
 
-// skipEmbeddedID3 looks for an ID3v2 tag in the first 64 KiB of the search
+/**
+ * skipEmbeddedID3 looks for an ID3v2 tag in the first 64 KiB of the search
+ */
 // window and returns the offset just past it, or from if there is none.
 func skipEmbeddedID3(rd *reader, from, limit int64) int64 {
 	end := from + 64<<10
