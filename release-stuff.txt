@@ -1,5 +1,13 @@
 # HowTo build a release
 
+Change version in:
+VERSION
+main.go
+CHANGELOG
+
+Add a tag
+
+merge it into master
 
 # Version names. Based on Deus Ex Missions.
 
