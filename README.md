@@ -1,6 +1,6 @@
 # m3s
 
-This is a tool to strip mp3 from all unwanted meta information and unknow fields you do not need.
+This is a tool to strip mp3 from all unwanted meta information and unknown fields you do not need.
 
 More information and official release visit: https://www.bananas-playground.net/projekt/m3s
 
