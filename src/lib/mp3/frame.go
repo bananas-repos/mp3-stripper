@@ -239,10 +239,7 @@ const maxResync = 2 << 20
  * resync finds the first believable frame in [from, limit).
  */
 func resync(rd *reader, from, limit int64) (int64, frameHeader, bool) {
-	end := from + maxResync
-	if end > limit {
-		end = limit
-	}
+	end := min(from + maxResync, limit)
 	buf := make([]byte, 64<<10)
 	for base := from; base+4 <= end; base += int64(len(buf)) - 3 {
 		n := int64(len(buf))

@@ -332,10 +332,7 @@ func findAudio(rd *reader, l *Layout, front, tail int64) (int64, frameHeader, er
  */
 // window and returns the offset just past it, or from if there is none.
 func skipEmbeddedID3(rd *reader, from, limit int64) int64 {
-	end := from + 64<<10
-	if end > limit {
-		end = limit
-	}
+	end := min(from + 64<<10, limit)
 	n := end - from
 	if n < 10 {
 		return from
